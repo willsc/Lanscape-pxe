@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local environment / secrets
+.env
+
+# Boot binaries staged by prepare.sh
+tftp/*
+!tftp/.gitkeep
+http/wimboot
+
+# OS install media staged by prepare.sh / UI image builds (http/<slug>/, smb/<slug>/)
+http/*/
+!http/clients/
+!http/agent-src/
+http/clients/*
+!http/clients/.gitkeep
+http/agent-src/*
+!http/agent-src/.gitkeep
+smb/*
+!smb/.gitkeep
+
+# Generated at runtime by the server / reposync
+http/boot.ipxe
+repo/*
+!repo/.gitkeep

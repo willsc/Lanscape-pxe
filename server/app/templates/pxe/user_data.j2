@@ -1,0 +1,76 @@
+#cloud-config
+# Subiquity autoinstall for {{ machine.hostname }} — rendered by Landscape.
+autoinstall:
+  version: 1
+  refresh-installer:
+    update: false
+  locale: {{ cfg.locale }}
+  keyboard:
+    layout: {{ cfg.keyboard }}
+  identity:
+    hostname: {{ machine.hostname }}
+    username: {{ username }}
+    password: "{{ password_hash }}"
+  ssh:
+    install-server: true
+    allow-pw: true
+{% if cfg.use_local_mirror %}
+  apt:
+    preserve_sources_list: false
+    primary:
+      - arches: [amd64]
+        uri: http://{{ server_ip }}:{{ http_port }}/repo/archive.ubuntu.com/ubuntu
+    fallback: offline-install
+{% endif %}
+{% if net %}
+  network:
+    version: 2
+    ethernets:
+      primary:
+        match:
+          macaddress: "{{ machine.mac }}"
+        addresses: [{{ net.ip }}/{{ net.prefix or 24 }}]
+{% if net.gateway %}
+        routes:
+          - to: default
+            via: {{ net.gateway }}
+{% endif %}
+{% if net.dns %}
+        nameservers:
+          addresses: [{{ net.dns | join(", ") }}]
+{% endif %}
+{% endif %}
+  storage:
+    layout:
+      name: {{ 'lvm' if cfg.storage == 'lvm' else 'direct' }}
+  packages:
+{% for pkg in packages %}
+    - {{ pkg }}
+{% endfor %}
+{% if snaps %}
+  snaps:
+{% for s in snaps %}
+    - name: {{ s }}
+{% endfor %}
+{% endif %}
+  late-commands:
+    - curtin in-target --target=/target -- timedatectl set-timezone {{ cfg.timezone }} || true
+{% if cfg.post_script %}
+    # Stage the post-install script (base64 keeps YAML/quoting safe);
+    # first-boot runcmd executes it.
+    - echo {{ post_script_b64 }} | base64 -d > /target/usr/local/sbin/landscape-post-install.sh
+    - chmod 0755 /target/usr/local/sbin/landscape-post-install.sh
+{% endif %}
+{% if cfg.install_agent or cfg.post_script %}
+  user-data:
+    disable_root: false
+    timezone: {{ cfg.timezone }}
+    runcmd:
+{% if cfg.post_script %}
+      - [ /usr/local/sbin/landscape-post-install.sh ]
+{% endif %}
+{% if cfg.install_agent %}
+      # Enroll into Landscape management on first boot.
+      - [ sh, -c, "curl -fsS http://{{ server_ip }}:{{ http_port }}/agent-src/install.sh | sh -s -- --server http://{{ server_ip }}:{{ web_port }} --token {{ enroll_token }}" ]
+{% endif %}
+{% endif %}

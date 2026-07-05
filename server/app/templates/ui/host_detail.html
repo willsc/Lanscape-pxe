@@ -1,0 +1,136 @@
+{% extends "layout.html" %}
+{% block title %}{{ host.hostname }} — Landscape{% endblock %}
+{% block content %}
+<h1>{{ host.hostname }}
+  {% if online(host) %}<span class="pill ok">online</span>{% else %}<span class="pill mut">offline</span>{% endif %}
+  {% if host.reboot_required %}<span class="pill bad">reboot required</span>{% endif %}
+</h1>
+
+<div class="grid2">
+  <div class="panel">
+    <h2 style="margin-top:0">System</h2>
+    <table>
+      <tr><td class="mut">OS</td><td>{{ host.os_family }} {{ host.os_version }}</td></tr>
+      <tr><td class="mut">Kernel</td><td>{{ host.kernel }}</td></tr>
+      <tr><td class="mut">Arch</td><td>{{ host.arch }}</td></tr>
+      <tr><td class="mut">IP / MAC</td><td>{{ host.ip }} · {{ host.mac }}</td></tr>
+      <tr><td class="mut">Machine ID</td><td class="small">{{ host.machine_id }}</td></tr>
+      <tr><td class="mut">Agent</td><td>{{ host.agent_version }} · last seen {{ host.last_seen | ago }}</td></tr>
+      <tr><td class="mut">Enrolled</td><td>{{ host.enrolled_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+    </table>
+    {% if user.role != 'viewer' %}
+    <form method="post" action="/hosts/{{ host.id }}/action" class="row">
+      <input type="hidden" name="action" value="tags">
+      <input name="arg" value="{{ host.tags }}" placeholder="tags (comma separated)">
+      <button class="ghost">Save tags</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top:0">Hardware</h2>
+    {% set hw = host.hardware or {} %}
+    <table>
+      <tr><td class="mut">CPU</td><td>{{ hw.get('cpu','—') }} ({{ hw.get('cores','?') }} cores)</td></tr>
+      <tr><td class="mut">Memory</td><td>{{ (hw.get('memory_mb',0)/1024)|round(1) }} GB</td></tr>
+      <tr><td class="mut">Vendor / model</td><td>{{ hw.get('vendor','') }} {{ hw.get('model','') }}</td></tr>
+      <tr><td class="mut">Disks</td><td>{% for d in hw.get('disks',[]) %}{{ d.name }} {{ d.size }}<br>{% endfor %}</td></tr>
+      <tr><td class="mut">NICs</td><td class="small">{% for n in hw.get('nics',[]) %}{{ n.name }} {{ n.mac }} {{ n.ip }}<br>{% endfor %}</td></tr>
+    </table>
+  </div>
+</div>
+
+{% if user.role != 'viewer' %}
+<div class="panel">
+  <h2 style="margin-top:0">Actions</h2>
+  <form method="post" action="/hosts/{{ host.id }}/action" class="row">
+    <input type="hidden" name="action" value="pkg_install">
+    <input name="arg" placeholder="{{ 'apt packages to install' if host.os_family == 'ubuntu' else 'winget IDs to install (e.g. 7zip.7zip)' }}" style="width:280px">
+    <button>Install</button>
+  </form>
+  <form method="post" action="/hosts/{{ host.id }}/action" class="row">
+    <input type="hidden" name="action" value="pkg_remove">
+    <input name="arg" placeholder="{{ 'apt packages to remove' if host.os_family == 'ubuntu' else 'winget IDs to remove' }}" style="width:280px">
+    <button class="ghost">Remove</button>
+  </form>
+  <form method="post" action="/hosts/{{ host.id }}/action" class="row">
+    <input type="hidden" name="action" value="script">
+    <input name="arg" placeholder="{{ 'shell command' if host.os_family=='ubuntu' else 'PowerShell command' }}" style="width:420px">
+    <button>Run script</button>
+  </form>
+  <div class="row">
+    <form method="post" action="/hosts/{{ host.id }}/action" class="inline">
+      <input type="hidden" name="action" value="upgrade"><button>Apply all updates</button>
+    </form>
+    <form method="post" action="/hosts/{{ host.id }}/action" class="inline">
+      <input type="hidden" name="action" value="reboot"><button class="ghost">Reboot</button>
+    </form>
+    <form method="post" action="/hosts/{{ host.id }}/action" class="inline"
+          onsubmit="return confirm('Remove this host from management?')">
+      <input type="hidden" name="action" value="delete"><button class="danger">Remove host</button>
+    </form>
+  </div>
+  {% if host.os_family == 'ubuntu' %}
+  <h2>Security hardening</h2>
+  <form method="post" action="/hosts/{{ host.id }}/action">
+    <input type="hidden" name="action" value="harden">
+    {% for key, label in harden_actions.items() %}
+    <label style="display:block"><input type="checkbox" name="harden" value="{{ key }}" checked> {{ label }}</label>
+    {% endfor %}
+    <div class="row"><button>Apply hardening</button></div>
+  </form>
+  {% endif %}
+  <h2>Compliance scan</h2>
+  <form method="post" action="/hosts/{{ host.id }}/action" class="row">
+    <input type="hidden" name="action" value="scan">
+    <select name="arg">{% for p in profiles %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
+    <button>Scan now</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="grid2">
+  <div class="panel">
+    <h2 style="margin-top:0">Pending updates ({{ host.updates|length }})</h2>
+    <table>
+      {% for u in host.updates[:40] %}
+      <tr><td>{{ u.get('name') }}</td><td class="mut small">{{ u.get('version','') }} {% if u.get('security') %}<span class="pill bad">security</span>{% endif %}</td></tr>
+      {% else %}<tr><td class="mut">None.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="panel">
+    <h2 style="margin-top:0">Compliance history</h2>
+    <table>
+      <tr><th>Profile</th><th>Result</th><th>When</th></tr>
+      {% for r in results %}
+      <tr><td>{{ r.profile.name }}</td>
+          <td><span class="pill {{ 'ok' if r.failed==0 else 'bad' }}">{{ r.passed }}/{{ r.passed+r.failed }}</span>
+          {% if r.failed %}<div class="small mut">{% for i in r.results if not i.ok %}✗ {{ i.desc }}<br>{% endfor %}</div>{% endif %}</td>
+          <td class="mut">{{ r.ran_at | ago }}</td></tr>
+      {% else %}<tr><td colspan="3" class="mut">No scans yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Software inventory ({{ n_packages }} packages)</h2>
+  <form method="get" class="row"><input name="q" value="{{ q }}" placeholder="filter packages"><button class="ghost">Filter</button></form>
+  <table>
+    <tr><th>Package</th><th>Version</th></tr>
+    {% for p in packages %}<tr><td>{{ p.name }}</td><td class="mut">{{ p.version }}</td></tr>{% endfor %}
+  </table>
+  {% if n_packages > packages|length %}<p class="mut small">Showing {{ packages|length }} of {{ n_packages }} — refine the filter or export <a href="/export/packages.csv">packages.csv</a>.</p>{% endif %}
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Recent tasks</h2>
+  <table>
+    <tr><th>Type</th><th>Status</th><th>By</th><th>When</th></tr>
+    {% for t in tasks %}
+    <tr><td><a href="/tasks/{{ t.id }}">{{ t.type }}</a></td>
+        <td><span class="pill {{ 'ok' if t.status=='done' else 'bad' if t.status=='failed' else 'mut' }}">{{ t.status }}</span></td>
+        <td class="mut">{{ t.created_by }}</td><td class="mut">{{ t.created_at | ago }}</td></tr>
+    {% else %}<tr><td colspan="4" class="mut">No tasks.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

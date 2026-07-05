@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — hosts{% endblock %}
+{% block content %}
+<h1>Hosts</h1>
+
+<form method="post" action="/hosts/bulk">
+<div class="panel">
+  <table>
+    <tr><th></th><th>Host</th><th>OS</th><th>IP</th><th>Hardware</th><th>Updates</th><th>Status</th><th>Last seen</th><th>Tags</th></tr>
+    {% for h in hosts %}
+    <tr>
+      <td><input type="checkbox" name="host_id" value="{{ h.id }}"></td>
+      <td><a href="/hosts/{{ h.id }}">{{ h.hostname }}</a></td>
+      <td>{{ h.os_family }} {{ h.os_version }}</td>
+      <td>{{ h.ip }}</td>
+      <td class="small mut">{{ (h.hardware or {}).get('cpu','')[:40] }} · {{ ((h.hardware or {}).get('memory_mb', 0) / 1024) | round(1) }} GB</td>
+      <td>{% if h.updates %}<span class="pill warn">{{ h.updates|length }} pending</span>{% else %}<span class="pill ok">up to date</span>{% endif %}
+          {% if h.reboot_required %}<span class="pill bad">reboot</span>{% endif %}</td>
+      <td>{% if online(h) %}<span class="pill ok">online</span>{% else %}<span class="pill mut">offline</span>{% endif %}</td>
+      <td class="mut">{{ h.last_seen | ago }}</td>
+      <td class="small">{{ h.tags }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="9" class="mut">No hosts enrolled yet — install the agent (Settings page has the one-liner) or PXE-install a machine with enrollment on.</td></tr>
+    {% endfor %}
+  </table>
+  {% if hosts and user.role != 'viewer' %}
+  <div class="row" style="margin-top:12px">
+    <span class="mut small">With selected:</span>
+    <select name="action">
+      <option value="upgrade">Apply all updates</option>
+      <option value="harden">Apply hardening (all actions)</option>
+      <option value="scan">Compliance scan (profile id in arg)</option>
+      <option value="pkg_install">Install packages (arg)</option>
+    </select>
+    <input name="arg" placeholder="arg (packages / profile id)">
+    <button>Run</button>
+    <span class="mut small">Profiles: {% for p in profiles %}{{ p.id }}={{ p.name }}{{ ", " if not loop.last }}{% endfor %}</span>
+  </div>
+  {% endif %}
+</div>
+</form>
+
+<div class="panel small mut">
+Export inventory: <a href="/export/hosts.csv">hosts.csv</a> · <a href="/export/packages.csv">packages.csv</a> · <a href="/export/compliance.csv">compliance.csv</a>
+</div>
+{% endblock %}

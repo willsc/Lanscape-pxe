@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — software{% endblock %}
+{% block content %}
+<h1>Software</h1>
+
+<div class="panel">
+  <h2 style="margin-top:0">Install / remove packages</h2>
+  {% if hosts %}
+  <p class="mut small">Runs through the agent on the next check-in —
+  apt package names on Ubuntu, winget IDs on Windows
+  (e.g. <code>vlc</code> / <code>VideoLAN.VLC</code>). When targeting both
+  families at once, make sure the names are valid on each.</p>
+  {% if user.role != 'viewer' %}
+  <form method="post" action="/software/action">
+    <div class="row">
+      <input name="packages" placeholder="packages (apt names / winget IDs)" style="flex:1;min-width:280px" required>
+      <button name="action" value="pkg_install">Install</button>
+      <button name="action" value="pkg_remove" class="ghost">Remove</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="mut small">On:</span>
+      <label class="small"><input type="radio" name="target" value="ubuntu" checked> all Ubuntu</label>
+      <label class="small"><input type="radio" name="target" value="windows"> all Windows</label>
+      <label class="small"><input type="radio" name="target" value="all"> every host</label>
+      <label class="small"><input type="radio" name="target" value="selected"> selected below</label>
+    </div>
+    <table style="margin-top:10px">
+      <tr><th></th><th>Host</th><th>OS</th><th>Status</th><th>Last seen</th></tr>
+      {% for h in hosts %}
+      <tr>
+        <td><input type="checkbox" name="host_id" value="{{ h.id }}"></td>
+        <td><a href="/hosts/{{ h.id }}">{{ h.hostname }}</a></td>
+        <td>{{ h.os_family }} {{ h.os_version }}</td>
+        <td>{% if online(h) %}<span class="pill ok">online</span>{% else %}<span class="pill mut">offline</span>{% endif %}</td>
+        <td class="mut">{{ h.last_seen | ago }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </form>
+  {% endif %}
+  {% else %}
+  <p class="mut">No hosts enrolled yet, so there is nothing to install onto.
+  Enroll a host and it appears here within a minute:</p>
+  <p class="mut small">Ubuntu:</p>
+  <pre>curl -fsS http://{{ server_ip }}:{{ http_port }}/agent-src/install.sh | sudo sh -s -- \
+  --server http://{{ server_ip }}:8443 --token &lt;TOKEN&gt;</pre>
+  <p class="mut small">Windows (admin PowerShell):</p>
+  <pre>iwr http://{{ server_ip }}:{{ http_port }}/agent-src/windows/install.ps1 -OutFile $env:TEMP\ls.ps1
+&amp; $env:TEMP\ls.ps1 -Server http://{{ server_ip }}:8443 -Token &lt;TOKEN&gt;</pre>
+  <p class="mut small">Tokens live on the <a href="/settings">Settings</a> page. Machines
+  PXE-installed with “enroll on first boot” arrive here automatically.</p>
+  {% endif %}
+</div>
+
+<div class="grid2">
+<div class="panel">
+  <h2 style="margin-top:0">Find a package across the fleet</h2>
+  <form method="get" class="row">
+    <input name="q" value="{{ q }}" placeholder="package name (e.g. openssl)" style="flex:1">
+    <button class="ghost">Search</button>
+  </form>
+  {% if q %}
+  <table style="margin-top:10px">
+    <tr><th>Host</th><th>Package</th><th>Version</th></tr>
+    {% for h, name, version in found %}
+    <tr><td><a href="/hosts/{{ h.id }}">{{ h.hostname }}</a></td>
+        <td class="small">{{ name }}</td><td class="small mut">{{ version }}</td></tr>
+    {% else %}<tr><td colspan="3" class="mut">No installed package matches “{{ q }}”.</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+<div class="panel">
+  <h2 style="margin-top:0">Recent package tasks</h2>
+  <table>
+    <tr><th>#</th><th>Host</th><th>Action</th><th>Packages</th><th>Status</th><th>When</th></tr>
+    {% for t in pkg_tasks %}
+    <tr>
+      <td><a href="/tasks/{{ t.id }}">{{ t.id }}</a></td>
+      <td>{{ t.host.hostname if t.host else '—' }}</td>
+      <td>{{ 'install' if t.type == 'pkg_install' else 'remove' }}</td>
+      <td class="small">{{ (t.payload or {}).get('packages', []) | join(' ') | truncate(50) }}</td>
+      <td><span class="pill {{ 'ok' if t.status=='done' else 'bad' if t.status=='failed' else 'warn' }}">{{ t.status }}</span></td>
+      <td class="mut">{{ t.created_at | ago }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="mut">No package tasks yet.</td></tr>{% endfor %}
+  </table>
+</div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Packages installed at OS install time</h2>
+  <p class="mut small">Defaults live on each image; any machine registered for PXE install
+  can override them on its own page.</p>
+  <table>
+    <tr><th>Image</th><th>Family</th><th>Default packages</th><th></th></tr>
+    {% for i in images %}
+    <tr>
+      <td><a href="/provision/images/{{ i.id }}">{{ i.name }}</a></td>
+      <td>{{ i.os_family }}</td>
+      <td class="small mut">{% if i.default_packages %}{{ i.default_packages | join(' ') | truncate(70) }}{% else %}—{% endif %}</td>
+      <td><a href="/provision/images/{{ i.id }}">customise</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

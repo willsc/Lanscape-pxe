@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% block title %}{{ m.hostname }} — Landscape{% endblock %}
+{% block content %}
+<h1>{{ m.hostname }}
+  <span class="pill {{ 'ok' if m.status=='installed' else 'warn' if m.status=='rendered' else 'mut' }}">{{ m.status }}</span>
+  <span class="pill mut">{{ m.mac }}</span>
+</h1>
+<p class="mut small"><a href="/provision">&larr; back to provisioning</a></p>
+
+<form method="post" action="/provision/machines/{{ m.id }}">
+<div class="panel">
+  <h2 style="margin-top:0">Machine</h2>
+  <div class="row">
+    <label>Hostname <input name="hostname" value="{{ m.hostname }}" style="width:200px"></label>
+    <label>Image
+      <select name="image_id">
+        {% for i in images %}<option value="{{ i.id }}" {{ 'selected' if i.id == m.image_id }}>{{ i.name }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <div class="row">
+    <label>Username <input name="username" value="{{ m.username }}" placeholder="(image default)" style="width:140px"></label>
+    <label>Password <input name="password" type="password" placeholder="(unchanged)" style="width:150px"></label>
+    <label><input type="checkbox" name="enroll" value="1" {{ 'checked' if m.enroll_on_install }}> enroll into management on first boot</label>
+  </div>
+  <div class="row">
+    <label style="flex:1">
+      {% if m.image and m.image.os_family == 'windows' %}Packages — winget IDs (replaces image defaults when set)
+      {% else %}Apt packages (replaces image defaults when set){% endif %}
+      <input name="packages" value="{{ m.packages | join(' ') }}" style="width:100%"
+             placeholder="{{ '7zip.7zip Mozilla.Firefox' if m.image and m.image.os_family == 'windows' else 'vlc gimp docker.io' }}"></label>
+  </div>
+  {% if not m.image or m.image.os_family == 'ubuntu' %}
+  <div class="row">
+    <label style="flex:1">Snaps override
+      <input name="snaps" value="{{ ov.get('snaps',[]) | join(' ') }}" style="width:100%" placeholder="(image default)"></label>
+  </div>
+  {% endif %}
+
+  <h2>Overrides <span class="mut small">(blank = use image default)</span></h2>
+  <div class="row">
+    <label>Locale <input name="locale" value="{{ ov.get('locale','') }}" placeholder="{{ cfg.locale }}" style="width:140px"></label>
+    <label>Timezone <input name="timezone" value="{{ ov.get('timezone','') }}" placeholder="{{ cfg.timezone or cfg.timezone_windows }}" style="width:170px"></label>
+    <label>Disk layout
+      <select name="storage">
+        <option value="" {{ 'selected' if not ov.get('storage') }}>(image default)</option>
+        <option value="direct" {{ 'selected' if ov.get('storage')=='direct' }}>direct</option>
+        <option value="lvm" {{ 'selected' if ov.get('storage')=='lvm' }}>LVM</option>
+      </select></label>
+  </div>
+  <div class="row">
+    <label style="flex:1">Extra kernel args
+      <input name="kernel_args" value="{{ ov.get('kernel_args','') }}" placeholder="{{ cfg.kernel_args }}" style="width:100%"></label>
+  </div>
+  <div class="row">
+    <label style="flex:1">Post-install script override
+      <textarea name="post_script" rows="4">{{ ov.get('post_script','') }}</textarea></label>
+  </div>
+
+  <h2>Static network <span class="mut small">(Ubuntu; blank = DHCP)</span></h2>
+  <div class="row">
+    <label>IP <input name="net_ip" value="{{ net.get('ip','') }}" style="width:140px"></label>
+    <label>Prefix <input name="net_prefix" value="{{ net.get('prefix','') }}" placeholder="24" style="width:60px"></label>
+    <label>Gateway <input name="net_gateway" value="{{ net.get('gateway','') }}" style="width:140px"></label>
+    <label>DNS <input name="net_dns" value="{{ net.get('dns',[]) | join(' ') }}" placeholder="space separated" style="width:200px"></label>
+  </div>
+
+  {% if user.role != 'viewer' %}
+  <div class="row"><button>Save &amp; re-render boot files</button></div>
+  {% endif %}
+</div>
+</form>
+
+{% for name, content in artifacts.items() %}
+<div class="panel">
+  <h2 style="margin-top:0">Rendered {{ name }}</h2>
+  <pre>{{ content }}</pre>
+</div>
+{% endfor %}
+
+{% if user.role != 'viewer' %}
+<form method="post" action="/provision/machines/{{ m.id }}/delete"
+      onsubmit="return confirm('Delete this machine?')">
+  <button class="danger">Delete machine</button>
+</form>
+{% endif %}
+{% endblock %}

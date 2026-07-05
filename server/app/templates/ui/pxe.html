@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — PXE / DHCP{% endblock %}
+{% block content %}
+<h1>PXE / DHCP</h1>
+
+{% if applied %}
+<div class="panel"><span class="pill ok">applied</span> dnsmasq rendered in <b>{{ applied }}</b> mode
+and restarted.</div>
+{% endif %}
+
+<div class="panel">
+  <h2 style="margin-top:0">DHCP mode</h2>
+  <p class="mut small">
+    <b>proxy</b> — your existing DHCP server keeps handing out IPs; Landscape only adds PXE
+    boot hints (safe to run alongside a router).<br>
+    <b>server</b> — Landscape's dnsmasq hands out leases too (use on networks with no DHCP).<br>
+    <b>auto</b> — probe the LAN at apply time: picks proxy when a DHCP server answers, server otherwise.
+  </p>
+  {% if user.role != 'viewer' %}
+  <form method="post" action="/pxe/probe" class="inline"><button class="ghost">Probe network for DHCP servers</button></form>
+  {% endif %}
+  {% if probe %}
+  <p style="margin-top:10px">
+    {% if probe.found %}<span class="pill ok">DHCP server found</span>
+      {% for o in probe.offers %}<span class="small">server {{ o.server_id }} offered {{ o.offered_ip }} (router {{ o.router }})</span>{% endfor %}
+      — proxy mode recommended.
+    {% else %}<span class="pill warn">no DHCP server answered</span> on {{ probe.interface }} — server mode is safe.
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <form method="post" action="/pxe/dhcp">
+    <div class="row">
+      <label>Mode
+        <select name="mode">
+          <option value="proxy" {{ 'selected' if dhcp.mode=='proxy' }}>proxy (use existing DHCP)</option>
+          <option value="server" {{ 'selected' if dhcp.mode=='server' }}>server (we run DHCP)</option>
+          <option value="auto" {{ 'selected' if dhcp.mode=='auto' }}>auto (probe and decide)</option>
+        </select>
+      </label>
+    </div>
+    <h2>Server-mode lease settings</h2>
+    <div class="row">
+      <input name="range_start" value="{{ dhcp.range_start }}" placeholder="range start e.g. 192.168.1.100">
+      <input name="range_end" value="{{ dhcp.range_end }}" placeholder="range end e.g. 192.168.1.200">
+      <input name="netmask" value="{{ dhcp.netmask }}" placeholder="netmask" style="width:130px">
+    </div>
+    <div class="row">
+      <input name="gateway" value="{{ dhcp.gateway }}" placeholder="gateway">
+      <input name="dns" value="{{ dhcp.dns | join(' ') }}" placeholder="dns servers (space separated)">
+      <input name="lease_time" value="{{ dhcp.lease_time }}" placeholder="lease" style="width:80px">
+    </div>
+    {% if user.role == 'admin' %}
+    <div class="row"><button>Apply &amp; restart dnsmasq</button></div>
+    {% endif %}
+  </form>
+  <p class="mut small">Server IP: <code>{{ server_ip }}</code> · proxy subnet: <code>{{ subnet }}</code>
+  (from <code>.env</code>). Server mode refuses to activate without a lease range and falls back to proxy.</p>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Current dnsmasq.conf</h2>
+  <pre>{{ conf or '(not rendered yet)' }}</pre>
+</div>
+{% endblock %}

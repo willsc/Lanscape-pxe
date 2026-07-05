@@ -1,0 +1,24 @@
+#!ipxe
+# Boot script for {{ machine.hostname }} ({{ machine.mac }})
+# Image: {{ image.name if image else "none" }}
+
+set server {{ server_ip }}
+set http  http://${server}:{{ http_port }}
+
+{% if image is none %}
+echo No image attached to this machine. Dropping to shell.
+shell
+{% elif image.os_family == "ubuntu" %}
+echo Installing {{ image.name }} on {{ machine.hostname }}...
+kernel ${http}/{{ image.slug }}/vmlinuz initrd=initrd ip=dhcp url=${http}/{{ image.slug }}/image.iso autoinstall ds=nocloud-net;s=${http}/clients/{{ machine.mac_hyph }}/ {{ cfg.kernel_args }} ---
+initrd ${http}/{{ image.slug }}/initrd
+boot
+{% elif image.os_family == "windows" %}
+echo Installing {{ image.name }} on {{ machine.hostname }}...
+kernel ${http}/wimboot
+initrd ${http}/clients/{{ machine.mac_hyph }}/autounattend.xml   autounattend.xml
+initrd ${http}/{{ image.slug }}/boot/bcd                          BCD
+initrd ${http}/{{ image.slug }}/boot/boot.sdi                     boot.sdi
+initrd ${http}/{{ image.slug }}/sources/boot.wim                  boot.wim
+boot
+{% endif %}

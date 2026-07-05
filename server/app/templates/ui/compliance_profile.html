@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block title %}{{ p.name }} — Landscape{% endblock %}
+{% block content %}
+<h1>{{ p.name }} {% if p.builtin %}<span class="pill mut">builtin</span>{% endif %}</h1>
+<div class="panel">
+  <form method="post" action="/compliance/profiles/{{ p.id }}">
+    <div class="row"><input name="description" value="{{ p.description }}" style="width:60%"></div>
+    <p class="mut small">Rules are a JSON list. Rule types (ubuntu): <code>sshd_config</code>,
+    <code>package_installed</code>, <code>package_absent</code>, <code>sysctl</code>,
+    <code>command</code> (cmd + expect_rc), <code>no_pending_security_updates</code>,
+    <code>reboot_not_required</code>. Windows: <code>powershell</code> (cmd, exit 0 = pass).</p>
+    <textarea name="rules_json" rows="24">{{ rules_json }}</textarea>
+    {% if user.role == 'admin' %}<div class="row"><button>Save</button></div>{% endif %}
+  </form>
+  {% if user.role == 'admin' and not p.builtin %}
+  <form method="post" action="/compliance/profiles/{{ p.id }}/delete"
+        onsubmit="return confirm('Delete this profile?')">
+    <button class="danger">Delete profile</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

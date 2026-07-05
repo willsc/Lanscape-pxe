@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — provisioning{% endblock %}
+{% block content %}
+<h1>Provisioning</h1>
+
+<div class="panel">
+  <h2 style="margin-top:0">OS images</h2>
+  <p class="mut small">Click an image to customise its install — packages
+  (apt/snaps on Ubuntu, winget on Windows), locale, disk layout, users,
+  post-install scripts. Every setting can be overridden per machine below.</p>
+  <table>
+    <tr><th>Name</th><th>Family</th><th>Version</th><th>Slug</th><th>Boot files</th><th>Install packages</th><th></th></tr>
+    {% for i in images %}
+    <tr>
+      <td><a href="/provision/images/{{ i.id }}">{{ i.name }}</a></td>
+      <td>{{ i.os_family }}</td><td>{{ i.version }}</td>
+      <td><code>{{ i.slug }}</code></td>
+      <td>{% if building[i.id] %}<span class="pill warn">building…</span>
+          {% elif image_ready[i.id] %}<span class="pill ok">ready</span>
+          {% else %}<span class="pill bad">missing</span>{% endif %}</td>
+      <td class="small mut">{% if i.default_packages %}{{ i.default_packages | join(' ') | truncate(60) }}{% else %}—{% endif %}</td>
+      <td><a href="/provision/images/{{ i.id }}"><strong>customise install</strong> / build</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if user.role == 'admin' %}
+  <h2>Add image</h2>
+  <p class="mut small">Any Ubuntu release with autoinstall works (22.04 → 26.04 and beyond) —
+  add it here, then build it from an ISO on its page.</p>
+  <form method="post" action="/provision/images/new" class="row">
+    <input name="name" placeholder="Ubuntu 26.10 Desktop" required>
+    <select name="os_family"><option value="ubuntu">ubuntu</option><option value="windows">windows</option></select>
+    <input name="version" placeholder="26.10" style="width:80px">
+    <input name="slug" placeholder="ubuntu-26.10" required>
+    <input name="default_packages" placeholder="ubuntu-desktop-minimal openssh-server" style="width:280px">
+    <button>Add image</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="grid2">
+<div class="panel">
+  <h2 style="margin-top:0">ISO library</h2>
+  <p class="mut small"><code>/opt/foreman/.iso-cache/</code> on the host — drop new ISOs there
+  and they appear here.</p>
+  <table>
+    <tr><th>File</th><th>Size</th><th>Added</th></tr>
+    {% for iso in isos %}
+    <tr><td class="small">{{ iso.name }}</td><td>{{ iso.size_gb }} GB</td><td class="mut">{{ iso.mtime }}</td></tr>
+    {% else %}<tr><td colspan="3" class="mut">No ISOs found.</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="panel">
+  <h2 style="margin-top:0">Recent build jobs</h2>
+  <table>
+    <tr><th>#</th><th>Job</th><th>Status</th><th>When</th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.id }}</td>
+      <td class="small"><a href="/provision/images/{{ j.ref_id }}">{{ j.title }}</a></td>
+      <td><span class="pill {{ 'ok' if j.status=='done' else 'bad' if j.status=='failed' else 'warn' }}">{{ j.status }}</span></td>
+      <td class="mut">{{ j.created_at | ago }}</td>
+    </tr>
+    {% else %}<tr><td colspan="4" class="mut">No builds yet.</td></tr>{% endfor %}
+  </table>
+</div>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Machines (by MAC)</h2>
+  <table>
+    <tr><th>Hostname</th><th>MAC</th><th>Image</th><th>User</th><th>Overrides</th><th>Status</th></tr>
+    {% for m in machines %}
+    <tr>
+      <td><a href="/provision/machines/{{ m.id }}">{{ m.hostname }}</a></td>
+      <td><code>{{ m.mac }}</code></td>
+      <td>{{ m.image.name if m.image else '—' }}</td>
+      <td>{{ m.username or '(image default)' }}</td>
+      <td class="small mut">{{ (m.overrides or {}).keys() | join(', ') }}</td>
+      <td><span class="pill {{ 'ok' if m.status=='installed' else 'warn' if m.status=='rendered' else 'mut' }}">{{ m.status }}</span></td>
+    </tr>
+    {% else %}<tr><td colspan="6" class="mut">No machines registered — unknown MACs PXE-booting get the interactive menu.</td></tr>{% endfor %}
+  </table>
+  {% if user.role != 'viewer' %}
+  <h2>Register machine</h2>
+  <form method="post" action="/provision/machines/new" class="row">
+    <input name="mac" placeholder="aa:bb:cc:dd:ee:ff" required>
+    <input name="hostname" placeholder="hostname" required>
+    <select name="image_id">{% for i in images %}<option value="{{ i.id }}">{{ i.name }}</option>{% endfor %}</select>
+    <input name="username" placeholder="user (image default)" style="width:140px">
+    <input name="password" type="password" placeholder="password (image default)" style="width:170px">
+    <input name="packages" placeholder="packages (apt / winget IDs)" style="width:200px">
+    <button>Register</button>
+  </form>
+  <p class="mut small">After registering you land on the machine page to customise its install:
+  packages, locale, disk, static IP, scripts — anything not set falls back to the image defaults.</p>
+  <form method="post" action="/provision/render"><button class="ghost">Re-render all boot files</button></form>
+  {% endif %}
+</div>
+
+<div class="panel small mut">
+  Boot menu: <code>http://{{ server_ip }}:{{ http_port }}/boot.ipxe</code> ·
+  per-machine files under <code>/clients/&lt;mac&gt;.ipxe</code>
+</div>
+{% endblock %}

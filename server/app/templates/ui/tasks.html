@@ -1,0 +1,22 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — tasks{% endblock %}
+{% block content %}
+<h1>Tasks</h1>
+<div class="panel">
+  <table>
+    <tr><th>#</th><th>Host</th><th>Type</th><th>Status</th><th>Exit</th><th>By</th><th>Created</th><th>Finished</th></tr>
+    {% for t in tasks %}
+    <tr>
+      <td><a href="/tasks/{{ t.id }}">{{ t.id }}</a></td>
+      <td><a href="/hosts/{{ t.host_id }}">{{ t.host.hostname }}</a></td>
+      <td>{{ t.type }}</td>
+      <td><span class="pill {{ 'ok' if t.status=='done' else 'bad' if t.status=='failed' else 'mut' }}">{{ t.status }}</span></td>
+      <td>{{ t.exit_code if t.exit_code is not none else '' }}</td>
+      <td class="mut">{{ t.created_by }}</td>
+      <td class="mut">{{ t.created_at | ago }}</td>
+      <td class="mut">{{ t.finished_at | ago if t.finished_at else '—' }}</td>
+    </tr>
+    {% else %}<tr><td colspan="8" class="mut">No tasks yet.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}

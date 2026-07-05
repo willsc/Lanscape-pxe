@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="cards">
+  <div class="card"><div class="n">{{ hosts|length }}</div><div class="l">managed hosts</div></div>
+  <div class="card"><div class="n">{{ n_online }}</div><div class="l">online (5 min)</div></div>
+  <div class="card"><div class="n">{{ n_updates }}</div><div class="l">hosts with pending updates</div></div>
+  <div class="card"><div class="n">{{ n_reboot }}</div><div class="l">need reboot</div></div>
+  <div class="card"><div class="n">{{ pending_tasks }}</div><div class="l">tasks queued</div></div>
+</div>
+
+<div class="grid2">
+  <div class="panel">
+    <h2 style="margin-top:0">Recent tasks</h2>
+    <table>
+      <tr><th>Host</th><th>Type</th><th>Status</th><th>When</th></tr>
+      {% for t in recent_tasks %}
+      <tr>
+        <td><a href="/hosts/{{ t.host_id }}">{{ t.host.hostname }}</a></td>
+        <td><a href="/tasks/{{ t.id }}">{{ t.type }}</a></td>
+        <td><span class="pill {{ 'ok' if t.status=='done' else 'bad' if t.status=='failed' else 'mut' }}">{{ t.status }}</span></td>
+        <td class="mut">{{ t.created_at | ago }}</td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="mut">No tasks yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="panel">
+    <h2 style="margin-top:0">Latest compliance scans</h2>
+    <table>
+      <tr><th>Host</th><th>Profile</th><th>Result</th><th>When</th></tr>
+      {% for r in latest_compliance %}
+      <tr>
+        <td><a href="/hosts/{{ r.host_id }}">{{ r.host.hostname }}</a></td>
+        <td>{{ r.profile.name }}</td>
+        <td><span class="pill {{ 'ok' if r.failed==0 else 'bad' }}">{{ r.passed }}/{{ r.passed + r.failed }} pass</span></td>
+        <td class="mut">{{ r.ran_at | ago }}</td>
+      </tr>
+      {% else %}<tr><td colspan="4" class="mut">No scans yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}

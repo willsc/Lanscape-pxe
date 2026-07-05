@@ -1,0 +1,138 @@
+{% extends "layout.html" %}
+{% block title %}{{ img.name }} — Landscape{% endblock %}
+{% block content %}
+<h1>{{ img.name }}
+  {% if building %}<span class="pill warn">building…</span>
+  {% elif ready %}<span class="pill ok">ready</span>
+  {% else %}<span class="pill bad">no boot files</span>{% endif %}
+  <span class="pill mut">{{ img.os_family }} {{ img.version }}</span>
+</h1>
+<p class="mut small"><a href="/provision">&larr; back to provisioning</a> ·
+slug <code>{{ img.slug }}</code>
+{% if img.iso_path %} · built from <code>{{ img.iso_path }}</code>{% endif %}</p>
+
+<div class="panel">
+  <h2 style="margin-top:0">Build from ISO</h2>
+  <p class="mut small">Extracts boot assets from an ISO in the library
+  (<code>/opt/foreman/.iso-cache</code> on the host){% if img.os_family == 'windows' %},
+  copies the install media to the SMB share and patches <code>boot.wim</code> for
+  unattended network setup{% endif %}. Runs in the background — the log streams below.</p>
+  {% if user.role == 'admin' and not building %}
+  <form method="post" action="/provision/images/{{ img.id }}/build" class="row">
+    <select name="iso_name" style="max-width:480px">
+      {% for iso in isos %}<option value="{{ iso.name }}">{{ iso.name }} ({{ iso.size_gb }} GB, {{ iso.mtime }})</option>{% endfor %}
+    </select>
+    <button {% if not isos %}disabled{% endif %}>Build image</button>
+    {% if not isos %}<span class="mut small">no ISOs found in the library</span>{% endif %}
+  </form>
+  {% endif %}
+  {% if jobs %}
+  <h2>Build history</h2>
+  {% for j in jobs %}
+  <details {% if loop.first and (building or j.status != 'done') %}open{% endif %}>
+    <summary>#{{ j.id }} {{ j.title }}
+      <span class="pill {{ 'ok' if j.status=='done' else 'bad' if j.status=='failed' else 'warn' }}">{{ j.status }}</span>
+      <span class="mut small">{{ j.created_at | ago }}</span></summary>
+    <pre id="joblog-{{ j.id }}" {% if loop.first and building %}data-poll="1"{% endif %}>{{ j.log }}</pre>
+  </details>
+  {% endfor %}
+  {% endif %}
+</div>
+
+<form method="post" action="/provision/images/{{ img.id }}">
+<div class="panel">
+  <h2 style="margin-top:0">Image settings</h2>
+  <div class="row">
+    <label>Name <input name="name" value="{{ img.name }}" style="width:260px"></label>
+    <label>Version <input name="version" value="{{ img.version }}" style="width:90px"></label>
+  </div>
+  <div class="row">
+    <label style="flex:1">
+      {% if img.os_family == 'ubuntu' %}Default apt packages (space separated)
+      {% else %}Default packages — winget IDs, e.g. <code>7zip.7zip Mozilla.Firefox Google.Chrome</code>{% endif %}
+      <input name="default_packages" value="{{ img.default_packages | join(' ') }}" style="width:100%"
+             placeholder="{{ 'ubuntu-desktop-minimal openssh-server vlc' if img.os_family == 'ubuntu' else '7zip.7zip Mozilla.Firefox' }}">
+    </label>
+  </div>
+  {% if img.os_family == 'ubuntu' %}
+  <div class="row">
+    <label style="flex:1">Default snaps (space separated)
+      <input name="snaps" value="{{ cfg.snaps | default([]) | join(' ') }}" style="width:100%" placeholder="firefox code">
+    </label>
+  </div>
+  {% endif %}
+  <div class="row">
+    <label style="flex:1">Notes <input name="notes" value="{{ img.notes }}" style="width:100%"></label>
+  </div>
+
+  <h2>Install defaults <span class="mut small">(machines can override each of these)</span></h2>
+  <div class="row">
+    <label>Locale <input name="locale" value="{{ cfg.locale }}" style="width:140px"></label>
+    {% if img.os_family == 'ubuntu' %}
+    <label>Keyboard <input name="keyboard" value="{{ cfg.keyboard }}" style="width:80px"></label>
+    <label>Timezone <input name="timezone" value="{{ cfg.timezone }}" style="width:170px"></label>
+    <label>Disk layout
+      <select name="storage">
+        <option value="direct" {{ 'selected' if cfg.storage=='direct' }}>direct (whole disk)</option>
+        <option value="lvm" {{ 'selected' if cfg.storage=='lvm' }}>LVM</option>
+      </select></label>
+    {% else %}
+    <label>Windows timezone <input name="timezone_windows" value="{{ cfg.timezone_windows }}" style="width:200px"></label>
+    {% endif %}
+  </div>
+  <div class="row">
+    <label>Default username <input name="username" value="{{ cfg.username }}" style="width:130px"></label>
+    <label>Default password <input name="password" type="password" placeholder="(unchanged)" style="width:150px"></label>
+    {% if img.os_family == 'windows' %}
+    <label>Edition (image name) <input name="image_name" value="{{ cfg.image_name }}" style="width:180px"></label>
+    <label>Product key <input name="product_key" value="{{ cfg.product_key }}" style="width:270px"></label>
+    {% endif %}
+  </div>
+  {% if img.os_family == 'ubuntu' %}
+  <div class="row">
+    <label style="flex:1">Extra kernel args
+      <input name="kernel_args" value="{{ cfg.kernel_args }}" style="width:100%" placeholder="e.g. console=ttyS0 mitigations=off"></label>
+  </div>
+  <div class="row">
+    <label><input type="checkbox" name="use_local_mirror" value="1" {{ 'checked' if cfg.use_local_mirror }}>
+      Install from this server's apt mirror (offline installs)</label>
+  </div>
+  {% endif %}
+  <div class="row">
+    <label><input type="checkbox" name="install_agent" value="1" {{ 'checked' if cfg.install_agent }}>
+      Enroll into Landscape management on first boot</label>
+  </div>
+  <div class="row">
+    <label style="flex:1">Post-install script
+      ({{ 'shell, runs on first boot' if img.os_family == 'ubuntu' else 'PowerShell, runs at first logon' }})
+      <textarea name="post_script" rows="6" placeholder="#!/bin/sh&#10;...">{{ cfg.post_script }}</textarea>
+    </label>
+  </div>
+  {% if user.role == 'admin' %}
+  <div class="row"><button>Save image settings</button>
+    <span class="mut small">saving re-renders every machine using this image</span></div>
+  {% endif %}
+</div>
+</form>
+
+{% if user.role == 'admin' %}
+<form method="post" action="/provision/images/{{ img.id }}/delete"
+      onsubmit="return confirm('Delete this image? Machines using it stop rendering.')">
+  <button class="danger">Delete image</button>
+</form>
+{% endif %}
+
+<script>
+(function () {
+  var pre = document.querySelector('pre[data-poll]');
+  if (!pre) return;
+  var id = pre.id.replace('joblog-', '');
+  var t = setInterval(function () {
+    fetch('/provision/jobs/' + id).then(r => r.json()).then(function (j) {
+      pre.textContent = j.log;
+      if (j.status !== 'running') { clearInterval(t); location.reload(); }
+    }).catch(function () { clearInterval(t); });
+  }, 3000);
+})();
+</script>
+{% endblock %}

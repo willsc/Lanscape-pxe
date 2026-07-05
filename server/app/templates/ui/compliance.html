@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — compliance{% endblock %}
+{% block content %}
+<h1>Compliance &amp; reporting</h1>
+
+{% for s in summary %}
+<div class="panel">
+  <h2 style="margin-top:0">{{ s.profile.name }}
+    <span class="pill {{ 'ok' if s.n_hosts and s.n_pass==s.n_hosts else 'warn' if s.n_hosts else 'mut' }}">
+      {{ s.n_pass }}/{{ s.n_hosts }} hosts compliant</span>
+    {% if s.profile.builtin %}<span class="pill mut">builtin</span>{% endif %}
+  </h2>
+  <p class="mut small">{{ s.profile.description }} ({{ s.profile.rules|length }} rules, {{ s.profile.os_family }})
+     — <a href="/compliance/profiles/{{ s.profile.id }}">edit rules</a></p>
+  {% if user.role != 'viewer' %}
+  <form method="post" action="/compliance/scan/{{ s.profile.id }}" class="inline">
+    <button class="ghost">Scan all {{ s.profile.os_family }} hosts</button>
+  </form>
+  {% endif %}
+  {% if s.results %}
+  <table style="margin-top:10px">
+    <tr><th>Host</th><th>Result</th><th>Failed rules</th><th>When</th></tr>
+    {% for r in s.results %}
+    <tr>
+      <td><a href="/hosts/{{ r.host_id }}">{{ hosts[r.host_id].hostname }}</a></td>
+      <td><span class="pill {{ 'ok' if r.failed==0 else 'bad' }}">{{ r.passed }}/{{ r.passed+r.failed }}</span></td>
+      <td class="small">{% for i in r.results if not i.ok %}{{ i.desc }}{{ '; ' if not loop.last }}{% endfor %}</td>
+      <td class="mut">{{ r.ran_at | ago }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% if user.role == 'admin' %}
+<div class="panel">
+  <h2 style="margin-top:0">New profile</h2>
+  <form method="post" action="/compliance/profiles/new" class="row">
+    <input name="name" placeholder="name" required>
+    <select name="os_family"><option value="ubuntu">ubuntu</option><option value="windows">windows</option></select>
+    <input name="description" placeholder="description" style="width:280px">
+    <button>Create</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="panel small mut">Export: <a href="/export/compliance.csv">compliance.csv</a> (latest result per host/profile)</div>
+{% endblock %}

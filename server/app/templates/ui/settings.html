@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+
+<div class="panel">
+  <h2 style="margin-top:0">Single sign-on (bring your own OIDC IdP)</h2>
+  <p class="mut small">Works with Keycloak, Authentik, Entra ID, Okta, or any OIDC provider.
+  Set the redirect URI in your IdP to
+  <code>http://{{ server_ip }}:{{ web_port }}/oidc/callback</code>.
+  Roles map from the groups claim; local accounts below stay as break-glass fallback.</p>
+  <form method="post" action="/settings/oidc">
+    <div class="row"><input name="issuer" value="{{ oidc.get('issuer','') }}" placeholder="Issuer URL e.g. https://keycloak.lan/realms/main" style="width:420px"></div>
+    <div class="row">
+      <input name="client_id" value="{{ oidc.get('client_id','') }}" placeholder="client id">
+      <input name="client_secret" value="{{ oidc.get('client_secret','') }}" placeholder="client secret" type="password">
+      <input name="scopes" value="{{ oidc.get('scopes','openid profile email') }}" style="width:200px">
+    </div>
+    <div class="row">
+      <input name="groups_claim" value="{{ oidc.get('groups_claim','groups') }}" placeholder="groups claim" style="width:120px">
+      <input name="admin_group" value="{{ oidc.get('admin_group','') }}" placeholder="admin group">
+      <input name="operator_group" value="{{ oidc.get('operator_group','') }}" placeholder="operator group">
+      <label>default role
+        <select name="default_role">
+          {% for r in ['viewer','operator','admin'] %}
+          <option value="{{ r }}" {{ 'selected' if oidc.get('default_role','viewer')==r }}>{{ r }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="row"><button>Save SSO settings</button>
+      {% if oidc.get('issuer') %}<span class="pill ok">SSO enabled</span>{% else %}<span class="pill mut">SSO not configured</span>{% endif %}
+    </div>
+  </form>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Agent enrollment</h2>
+  <p class="mut small">Enroll an existing Ubuntu host with:</p>
+  <pre>curl -fsS http://{{ server_ip }}:{{ http_port }}/agent-src/install.sh | sudo sh -s -- \
+  --server http://{{ server_ip }}:{{ web_port }} --token &lt;TOKEN&gt;</pre>
+  <p class="mut small">Windows (admin PowerShell):</p>
+  <pre>iwr http://{{ server_ip }}:{{ http_port }}/agent-src/windows/install.ps1 -OutFile $env:TEMP\ls.ps1
+&amp; $env:TEMP\ls.ps1 -Server http://{{ server_ip }}:{{ web_port }} -Token &lt;TOKEN&gt;</pre>
+  <table>
+    <tr><th>Token</th><th>Note</th><th>Active</th><th></th></tr>
+    {% for t in tokens %}
+    <tr><td><code>{{ t.token }}</code></td><td>{{ t.note }}</td>
+        <td>{% if t.active %}<span class="pill ok">active</span>{% else %}<span class="pill mut">revoked</span>{% endif %}</td>
+        <td><form method="post" action="/settings/tokens/{{ t.id }}/toggle" class="inline"><button class="ghost">{{ 'Revoke' if t.active else 'Reactivate' }}</button></form></td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/settings/tokens/new" class="row">
+    <input name="note" placeholder="note (e.g. office batch 2)">
+    <button>New token</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Users</h2>
+  <table>
+    <tr><th>Username</th><th>Email</th><th>Role</th><th>Source</th><th></th></tr>
+    {% for u in users %}
+    <tr><td>{{ u.username }}</td><td class="mut">{{ u.email or '' }}</td><td>{{ u.role }}</td><td>{{ u.source }}</td>
+        <td>{% if u.id != user.id %}
+          <form method="post" action="/settings/users/{{ u.id }}/delete" class="inline" onsubmit="return confirm('Delete user?')"><button class="danger">Delete</button></form>
+        {% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/settings/users/new" class="row">
+    <input name="username" placeholder="username" required>
+    <input name="password" type="password" placeholder="password" required>
+    <select name="role"><option>viewer</option><option>operator</option><option>admin</option></select>
+    <button>Add local user</button>
+  </form>
+</div>
+{% endblock %}

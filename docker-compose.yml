@@ -1,0 +1,128 @@
+services:
+  # Postgres backing the fleet inventory, tasks, compliance results.
+  db:
+    image: postgres:16-alpine
+    container_name: landscape-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-landscape}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-landscape}
+      POSTGRES_DB: ${DB_NAME:-landscape}
+    volumes:
+      - landscape-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-landscape}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # FastAPI control plane + server-rendered web UI. Also the endpoint the
+  # host agents check in to. Renders PXE artifacts (boot.ipxe, cloud-init,
+  # autounattend, dnsmasq.conf) into the trees the other containers serve.
+  server:
+    build:
+      context: ./server
+    container_name: landscape-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8443}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${DB_USER:-landscape}:${DB_PASSWORD:-landscape}@db:5432/${DB_NAME:-landscape}
+      SESSION_SECRET: ${SESSION_SECRET:-change-me}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      SERVER_IP: ${SERVER_IP:-192.168.1.125}
+      SUBNET: ${SUBNET:-192.168.1.0}
+      HTTP_PORT: ${HTTP_PORT:-8081}
+      WEB_PORT: ${WEB_PORT:-8443}
+      PROBE_URL: http://host.docker.internal:8090
+      DNSMASQ_CONTAINER: landscape-dnsmasq
+      ISO_DIR: /srv/isos
+    volumes:
+      - ./http:/srv/http
+      - ./smb:/srv/smb
+      - ./config:/srv/config
+      - ./repo:/srv/repo
+      - ./agent:/srv/agent:ro
+      - ${ISO_LIBRARY:-/opt/foreman/.iso-cache}:/srv/isos
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # DHCP (proxy or full server) + TFTP. Host network so it sees broadcasts.
+  dnsmasq:
+    image: ghcr.io/dockur/dnsmasq:latest
+    container_name: landscape-dnsmasq
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./config/dnsmasq/dnsmasq.conf:/etc/dnsmasq.conf:ro
+      - ./tftp:/var/lib/tftpboot:ro
+
+  # Host-networked scapy sidecar that probes the LAN for existing DHCP
+  # servers. The server calls it to drive DHCP auto-mode and the "detect"
+  # button on the PXE page.
+  probe:
+    build:
+      context: ./probe
+    container_name: landscape-probe
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      PROBE_IFACE: ${PROBE_IFACE:-}
+
+  # nginx serving PXE assets (iPXE scripts, kernels, ISOs), the agent
+  # installers, and the local apt mirror (offline repository).
+  http:
+    image: nginx:1.27-alpine
+    container_name: landscape-http
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8081}:80"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./http:/srv/http:ro
+      - ./agent:/srv/http/agent-src:ro
+      - ./repo/mirror:/srv/repo:ro
+
+  # SMB share \\<server>\install that WinPE mounts to reach install.wim.
+  smb:
+    image: dperson/samba:latest
+    container_name: landscape-smb
+    restart: unless-stopped
+    ports:
+      - "139:139"
+      - "445:445"
+    environment:
+      USERID: 0
+      GROUPID: 0
+      TZ: UTC
+    command: >
+      -s "install;/share;yes;no;yes;all;none;none;Landscape install share"
+      -p
+      -n
+      -g "map to guest = Bad User"
+      -g "server min protocol = SMB2"
+    volumes:
+      - ./smb:/share:ro
+
+  # apt-mirror runner. Watches ./repo for a trigger file the server writes,
+  # then syncs the configured upstreams into ./repo/mirror (served by nginx).
+  reposync:
+    build:
+      context: ./reposync
+    container_name: landscape-reposync
+    restart: unless-stopped
+    volumes:
+      - ./repo:/srv/repo
+
+volumes:
+  landscape-pgdata:

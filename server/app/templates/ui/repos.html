@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+{% block title %}Landscape — repositories{% endblock %}
+{% block content %}
+<h1>Repository management</h1>
+
+<div class="panel">
+  <h2 style="margin-top:0">Mirror status</h2>
+  <p>
+    State: <span class="pill {{ 'ok' if status.state=='done' else 'warn' if status.state=='running' else 'mut' }}">{{ status.state }}</span>
+    {% if status.last_run %}<span class="mut small">last run {{ status.last_run }}</span>{% endif %}
+    {% if status.size %}<span class="mut small">· mirror size {{ status.size }}</span>{% endif %}
+  </p>
+  {% if status.detail %}<pre>{{ status.detail }}</pre>{% endif %}
+  {% if user.role != 'viewer' %}
+  <div class="row">
+    <form method="post" action="/repos/sync" class="inline"><button>Sync mirrors now</button></form>
+    <form method="post" action="/repos/push-sources" class="inline">
+      <button class="ghost">Point all {{ n_ubuntu_hosts }} Ubuntu hosts at this mirror</button>
+    </form>
+  </div>
+  {% endif %}
+  <p class="mut small">Syncing needs internet once; afterwards managed hosts install and update
+  entirely from this box (air-gap friendly).</p>
+</div>
+
+<div class="panel">
+  <h2 style="margin-top:0">Mirrors</h2>
+  <table>
+    <tr><th>Name</th><th>Upstream</th><th>Suites</th><th>Components</th><th>Arch</th><th>Enabled</th><th></th></tr>
+    {% for m in mirrors %}
+    <tr>
+      <td>{{ m.name }}</td>
+      <td class="small">{{ m.upstream }}</td>
+      <td class="small">{{ m.suites | join(', ') }}</td>
+      <td class="small">{{ m.components | join(', ') }}</td>
+      <td class="small">{{ m.arches | join(', ') }}</td>
+      <td>{% if m.enabled %}<span class="pill ok">yes</span>{% else %}<span class="pill mut">no</span>{% endif %}</td>
+      <td>
+        {% if user.role == 'admin' %}
+        <form method="post" action="/repos/{{ m.id }}/toggle" class="inline"><button class="ghost">{{ 'Disable' if m.enabled else 'Enable' }}</button></form>
+        <form method="post" action="/repos/{{ m.id }}/delete" class="inline" onsubmit="return confirm('Delete mirror?')"><button class="danger">Delete</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if user.role == 'admin' %}
+  <h2>Add mirror</h2>
+  <form method="post" action="/repos/new" class="row">
+    <input name="name" placeholder="name" required>
+    <input name="upstream" placeholder="http://archive.ubuntu.com/ubuntu" style="width:260px" required>
+    <input name="suites" placeholder="noble noble-updates noble-security" style="width:260px" required>
+    <input name="components" value="main universe">
+    <input name="arches" value="amd64" style="width:80px">
+    <button>Add</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if snippet %}
+<div class="panel">
+  <h2 style="margin-top:0">Client sources.list</h2>
+  <p class="mut small">What "push to hosts" writes to <code>/etc/apt/sources.list.d/landscape-mirror.list</code>:</p>
+  <pre>{{ snippet }}</pre>
+</div>
+{% endif %}
+{% endblock %}
